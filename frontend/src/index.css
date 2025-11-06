@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.3) rotate(-90deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes citationPulse {
+  0%, 100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+  50% {
+    background-color: rgba(251, 191, 36, 0.3);
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.2);
+  }
+}
+
+.citation-active {
+  animation: citationPulse 1s ease-in-out 2;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-pulse-dot {
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+/* BlockNote 编辑器中的链接样式 */
+.bn-editor a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.bn-editor a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* 确保 BlockNote 的所有浮动元素不会覆盖顶部工具栏 */
+[class*="bn-"] {
+  z-index: 40 !important;
+}
+
+.bn-container [class*="mantine-"] {
+  z-index: 40 !important;
+}
+
+/* BlockNote 侧边菜单相关 */
+.bn-side-menu,
+.bn-drag-handle-menu,
+[data-side-menu],
+[data-drag-handle] {
+  z-index: 40 !important;
+}
