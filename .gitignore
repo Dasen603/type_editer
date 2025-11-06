@@ -1,0 +1,18 @@
+# Node/React
+node_modules/
+dist/
+build/
+.next/
+.cache/
+*.log
+
+# Rust
+target/
+
+# OS/IDE
+.DS_Store
+.vscode/
+
+# System
+.local/
+.config/
