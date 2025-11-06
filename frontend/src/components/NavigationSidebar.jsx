@@ -40,9 +40,11 @@ const NavigationSidebar = () => {
   return (
     <div className="w-20 bg-white border-r border-gray-200 flex flex-col items-center py-4">
       <div className="mb-6">
-        <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-          TYPE
-        </div>
+        <img
+            src="/logo.png"      // 放 public 后用绝对路径
+            alt="Type Logo"
+            className="w-10 h-10 rounded-lg object-contain"
+          />
       </div>
 
       <div className="flex-1 flex flex-col gap-2">
