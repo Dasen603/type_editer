@@ -1,4 +1,4 @@
-# Type Editor - 结构化文档编辑器
+# type Editor - 结构化文档编辑器
 
 ## 项目概述
 一个基于 React + Node.js Express + SQLite 的结构化文档编辑器 MVP，支持大纲管理、BlockNote 富文本编辑、公式图片插入和自动保存功能。
