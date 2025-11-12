@@ -110,8 +110,8 @@ pub async fn create_node(
     Json(payload): Json<CreateNodeRequest>,
 ) -> Result<Json<Node>, StatusCode> {
     let result = sqlx::query(
-        "INSERT INTO nodes (document_id, parent_id, node_type, title, order_index, indent_level) 
-         VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO nodes (document_id, parent_id, node_type, title, order_index, indent_level, image_url) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(payload.document_id)
     .bind(payload.parent_id)
@@ -119,6 +119,7 @@ pub async fn create_node(
     .bind(&payload.title)
     .bind(payload.order_index)
     .bind(payload.indent_level)
+    .bind(&payload.image_url)
     .execute(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -247,21 +248,142 @@ pub async fn save_content(
     Ok(Json(content))
 }
 
+// File validation constants
+const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
+const ALLOWED_EXTENSIONS: &[&str] = &[".jpg", ".jpeg", ".png", ".gif", ".webp"];
+
+// Magic number signatures for image files
+fn verify_image_magic_number(data: &[u8], extension: &str) -> bool {
+    if data.len() < 4 {
+        return false;
+    }
+    
+    match extension {
+        ".jpg" | ".jpeg" => {
+            // JPEG: FF D8 FF
+            data.len() >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF
+        }
+        ".png" => {
+            // PNG: 89 50 4E 47 0D 0A 1A 0A
+            data.len() >= 8
+                && data[0] == 0x89
+                && data[1] == 0x50
+                && data[2] == 0x4E
+                && data[3] == 0x47
+                && data[4] == 0x0D
+                && data[5] == 0x0A
+                && data[6] == 0x1A
+                && data[7] == 0x0A
+        }
+        ".gif" => {
+            // GIF: 47 49 46 38 (GIF87a or GIF89a)
+            data.len() >= 4
+                && data[0] == 0x47
+                && data[1] == 0x49
+                && data[2] == 0x46
+                && data[3] == 0x38
+        }
+        ".webp" => {
+            // WebP: RIFF header (52 49 46 46) followed by WEBP
+            data.len() >= 12
+                && data[0] == 0x52
+                && data[1] == 0x49
+                && data[2] == 0x46
+                && data[3] == 0x46
+                && &data[8..12] == b"WEBP"
+        }
+        _ => false,
+    }
+}
+
+/// Sanitize filename to prevent path traversal attacks
+fn sanitize_filename(filename: &str) -> String {
+    use std::path::Path;
+    
+    // Get only the basename (remove any path components)
+    let basename = Path::new(filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+    
+    // Remove any non-alphanumeric characters except dots, hyphens, and underscores
+    let sanitized: String = basename
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    
+    // Limit filename length
+    const MAX_LENGTH: usize = 255;
+    if sanitized.len() > MAX_LENGTH {
+        if let Some(dot_pos) = sanitized.rfind('.') {
+            let ext = &sanitized[dot_pos..];
+            let name = &sanitized[..dot_pos.min(MAX_LENGTH - ext.len())];
+            format!("{}{}", name, ext)
+        } else {
+            sanitized.chars().take(MAX_LENGTH).collect()
+        }
+    } else {
+        sanitized
+    }
+}
+
 // File upload handler
 pub async fn upload_file(
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        let name = field.file_name().unwrap_or("unknown").to_string();
-        let data = field.bytes().await.unwrap();
-
+    while let Some(field) = multipart.next_field().await
+        .map_err(|_| StatusCode::BAD_REQUEST)? 
+    {
+        let original_name = field.file_name()
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let data = field.bytes().await
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        
+        // Check file size
+        if data.len() > MAX_FILE_SIZE {
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
+        
+        // Sanitize filename
+        let sanitized_name = sanitize_filename(original_name);
+        
+        // Check file extension
+        let extension = std::path::Path::new(&sanitized_name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| format!(".{}", ext.to_lowercase()))
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        
+        if !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        
+        // Verify file content matches extension using magic numbers
+        if !verify_image_magic_number(&data, &extension) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        
+        // Generate timestamp-based filename
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .as_secs();
-        let filename = format!("{}_{}", timestamp, name);
+        
+        let filename = format!("{}_{}", timestamp, sanitized_name);
         let filepath = format!("../uploads/{}", filename);
-
+        
+        // Create uploads directory if it doesn't exist
+        std::fs::create_dir_all("../uploads")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        
+        // Write file
         let mut file = std::fs::File::create(&filepath)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         file.write_all(&data)

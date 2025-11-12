@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Editor from '../components/Editor';
 import TopBar from '../components/TopBar';
 import EditorToolbar from '../components/EditorToolbar';
 import BibTeXModal from '../components/BibTeXModal';
 import ImagePreviewModal from '../components/ImagePreviewModal';
+import ErrorNotification from '../components/ErrorNotification';
 import { documentAPI, nodeAPI, contentAPI, uploadAPI } from '../services/api';
 import { computeWordCount } from '../utils/wordCount';
 
 function EditorPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const [document, setDocument] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -24,8 +26,51 @@ function EditorPage() {
   const [previewImage, setPreviewImage] = useState(null);
   const [formattingToolbarEnabled, setFormattingToolbarEnabled] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [error, setError] = useState(null);
   const editorRef = useRef(null);
   const citationNavigationIndex = useRef({});
+  
+  // Request deduplication: track ongoing requests
+  const ongoingRequestsRef = useRef(new Map());
+  
+  // Helper function to handle errors consistently
+  const handleError = useCallback((error, customMessage = null) => {
+    // In development, show more detailed error information
+    const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === 'development';
+    
+    let message = error?.userMessage || customMessage || error?.message || 'An unexpected error occurred';
+    
+    // Add more details in development mode
+    if (isDevelopment && error?.response?.data?.details) {
+      console.error('Error details:', error.response.data.details);
+    }
+    
+    if (isDevelopment && error?.response) {
+      console.error('Full error response:', {
+        status: error.response.status,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    }
+    
+    setError(message);
+    console.error('Error:', error);
+  }, []);
+  
+  // Helper function for request deduplication
+  const deduplicateRequest = useCallback((key, requestFn) => {
+    if (ongoingRequestsRef.current.has(key)) {
+      return ongoingRequestsRef.current.get(key);
+    }
+    
+    const promise = requestFn()
+      .finally(() => {
+        ongoingRequestsRef.current.delete(key);
+      });
+    
+    ongoingRequestsRef.current.set(key, promise);
+    return promise;
+  }, []);
 
   useEffect(() => {
     const initEditor = async () => {
@@ -45,12 +90,12 @@ function EditorPage() {
           await loadNodes(doc.id);
         }
       } catch (error) {
-        console.error('Error initializing editor:', error);
+        handleError(error, 'Failed to initialize editor');
       }
     };
 
     initEditor();
-  }, [projectId]);
+  }, [projectId, handleError]);
 
   const calculateCitationCounts = (sectionContents) => {
     const citationCounts = {};
@@ -91,7 +136,10 @@ function EditorPage() {
             const contentResponse = await contentAPI.get(node.id);
             return contentResponse.data.content_json;
           } catch (error) {
+            // Silently handle 404 errors (node/content already deleted)
+            if (error?.response?.status !== 404) {
             console.error(`Error loading content for section ${node.id}:`, error);
+            }
             return null;
           }
         })
@@ -108,67 +156,75 @@ function EditorPage() {
     }
   };
 
-  const loadNodes = async (documentId) => {
-    try {
-      const response = await nodeAPI.list(documentId);
-      setNodes(response.data);
-      
-      const sectionNodes = response.data.filter(n => n.node_type === 'section');
-      
-      const sectionContents = await Promise.all(
-        sectionNodes.map(async (node) => {
-          try {
-            const contentResponse = await contentAPI.get(node.id);
-            return contentResponse.data.content_json;
-          } catch (error) {
-            console.error(`Error loading content for section ${node.id}:`, error);
-            return null;
-          }
-        })
-      );
-      
-      const citationCounts = calculateCitationCounts(sectionContents);
-      
-      const referenceNodes = response.data.filter(n => n.node_type === 'reference');
-      const referencesWithContent = await Promise.all(
-        referenceNodes.map(async (node) => {
-          try {
-            const contentResponse = await contentAPI.get(node.id);
-            const contentData = contentResponse.data.content_json;
-            let bibtex = '';
-            
-            if (contentData) {
-              const parsed = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
-              bibtex = parsed.bibtex || '';
+  const loadNodes = useCallback(async (documentId) => {
+    return deduplicateRequest(`loadNodes-${documentId}`, async () => {
+      try {
+        const response = await nodeAPI.list(documentId);
+        setNodes(response.data);
+        
+        const sectionNodes = response.data.filter(n => n.node_type === 'section');
+        
+        const sectionContents = await Promise.all(
+          sectionNodes.map(async (node) => {
+            try {
+              const contentResponse = await contentAPI.get(node.id);
+              return contentResponse.data.content_json;
+            } catch (error) {
+              // Silently handle 404 errors (node/content already deleted)
+              if (error?.response?.status !== 404) {
+              console.error(`Error loading content for section ${node.id}:`, error);
+              }
+              return null;
             }
-            
-            return {
-              id: node.id,
-              title: node.title,
-              content: bibtex,
-              usageCount: citationCounts[node.title] || 0
-            };
-          } catch (error) {
-            console.error(`Error loading content for reference ${node.id}:`, error);
-            return {
-              id: node.id,
-              title: node.title,
-              content: '',
-              usageCount: 0
-            };
-          }
-        })
-      );
-      
-      setReferences(referencesWithContent);
-      
-      if (response.data.length > 0 && !selectedNode) {
-        setSelectedNode(response.data[0]);
+          })
+        );
+        
+        const citationCounts = calculateCitationCounts(sectionContents);
+        
+        const referenceNodes = response.data.filter(n => n.node_type === 'reference');
+        const referencesWithContent = await Promise.all(
+          referenceNodes.map(async (node) => {
+            try {
+              const contentResponse = await contentAPI.get(node.id);
+              const contentData = contentResponse.data.content_json;
+              let bibtex = '';
+              
+              if (contentData) {
+                const parsed = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
+                bibtex = parsed.bibtex || '';
+              }
+              
+              return {
+                id: node.id,
+                title: node.title,
+                content: bibtex,
+                usageCount: citationCounts[node.title] || 0
+              };
+            } catch (error) {
+              // Silently handle 404 errors (node/content already deleted)
+              if (error?.response?.status !== 404) {
+              console.error(`Error loading content for reference ${node.id}:`, error);
+              }
+              return {
+                id: node.id,
+                title: node.title,
+                content: '',
+                usageCount: 0
+              };
+            }
+          })
+        );
+        
+        setReferences(referencesWithContent);
+        
+        if (response.data.length > 0 && !selectedNode) {
+          setSelectedNode(response.data[0]);
+        }
+      } catch (error) {
+        handleError(error, 'Failed to load nodes');
       }
-    } catch (error) {
-      console.error('Error loading nodes:', error);
-    }
-  };
+    });
+  }, [deduplicateRequest, selectedNode, handleError]);
 
   useEffect(() => {
     if (selectedNode) {
@@ -185,7 +241,10 @@ function EditorPage() {
       const response = await contentAPI.get(nodeId);
       setContent(response.data.content_json);
     } catch (error) {
+      // Silently handle 404 errors (node/content already deleted)
+      if (error?.response?.status !== 404) {
       console.error('Error loading content:', error);
+      }
       setContent(null);
     }
   };
@@ -233,15 +292,15 @@ function EditorPage() {
             }
           }
         } catch (error) {
-          console.error('Error saving content:', error);
+          handleError(error, 'Failed to save content');
         } finally {
           setIsSaving(false);
         }
       }
-    }, 500);
+    }, 2000); // Increased from 500ms to 2000ms for better performance
 
     setSaveTimeout(timeout);
-  }, [selectedNode, saveTimeout, document, nodes]);
+  }, [selectedNode, saveTimeout, document, nodes, handleError]);
 
   const handleAddNode = async (nodeType = 'section') => {
     if (!document) return;
@@ -270,7 +329,7 @@ function EditorPage() {
       await loadNodes(document.id);
       setSelectedNode(response.data);
     } catch (error) {
-      console.error('Error creating node:', error);
+      handleError(error, 'Failed to create node');
     }
   };
 
@@ -293,7 +352,7 @@ function EditorPage() {
         await loadNodes(document.id);
       }
     } catch (error) {
-      console.error('Error saving BibTeX:', error);
+      handleError(error, 'Failed to save reference');
     }
   };
 
@@ -315,7 +374,7 @@ function EditorPage() {
       
       await loadNodes(document.id);
     } catch (error) {
-      console.error('Error uploading image:', error);
+      handleError(error, 'Failed to upload image');
     }
   };
 
@@ -337,7 +396,7 @@ function EditorPage() {
       });
       setIsBibTeXModalOpen(true);
     } catch (error) {
-      console.error('Error loading reference:', error);
+      handleError(error, 'Failed to load reference');
       setEditingReference(node);
       setIsBibTeXModalOpen(true);
     }
@@ -350,13 +409,17 @@ function EditorPage() {
     
     try {
       await nodeAPI.delete(nodeId);
-      await loadNodes(document.id);
       
+      // Clear selected node if it's the one being deleted
       if (selectedNode && selectedNode.id === nodeId) {
         setSelectedNode(null);
+        setContent(null);
       }
+      
+      // Reload nodes after deletion
+      await loadNodes(document.id);
     } catch (error) {
-      console.error('Error deleting reference:', error);
+      handleError(error, 'Failed to delete reference');
     }
   };
 
@@ -373,13 +436,17 @@ function EditorPage() {
     
     try {
       await nodeAPI.delete(nodeId);
-      await loadNodes(document.id);
       
+      // Clear selected node if it's the one being deleted
       if (selectedNode && selectedNode.id === nodeId) {
         setSelectedNode(null);
+        setContent(null);
       }
+      
+      // Reload nodes after deletion
+      await loadNodes(document.id);
     } catch (error) {
-      console.error('Error deleting node:', error);
+      handleError(error, 'Failed to delete section');
     }
   };
 
@@ -396,7 +463,7 @@ function EditorPage() {
 
       await loadNodes(document.id);
     } catch (error) {
-      console.error('Error reordering nodes:', error);
+      handleError(error, 'Failed to reorder nodes');
     }
   };
 
@@ -407,12 +474,16 @@ function EditorPage() {
       await documentAPI.update(document.id, newTitle);
       setDocument({ ...document, title: newTitle });
     } catch (error) {
-      console.error('Error updating document title:', error);
+      handleError(error, 'Failed to update document title');
     }
   };
 
   const handleExport = () => {
     console.log('Export functionality coming soon');
+  };
+
+  const handleBackToDocs = () => {
+    navigate('/projects');
   };
 
   const [sectionCountsCache, setSectionCountsCache] = useState(new Map());
@@ -442,7 +513,10 @@ function EditorPage() {
               };
             }
           } catch (error) {
+            // Silently handle 404 errors (node/content already deleted)
+            if (error?.response?.status !== 404) {
             console.error(`Error loading section ${node.id}:`, error);
+            }
           }
           return null;
         })
@@ -545,6 +619,10 @@ function EditorPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      <ErrorNotification 
+        error={error} 
+        onDismiss={() => setError(null)} 
+      />
       <BibTeXModal
         isOpen={isBibTeXModalOpen}
         onClose={() => {
@@ -591,6 +669,7 @@ function EditorPage() {
           onExport={handleExport}
           onUndo={handleUndo}
           onRedo={handleRedo}
+          onBackToDocs={handleBackToDocs}
         />
         
         <div className="flex-1 overflow-auto">

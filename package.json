@@ -1,12 +1,19 @@
 {
-  "name": "workspace",
+  "name": "type-editor-workspace",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "start": "node start.js",
+    "start:win": "start.bat",
+    "start:ps": "powershell -ExecutionPolicy Bypass -File start.ps1",
+    "start:unix": "bash start.sh",
+    "backend": "cd backend-express && node server.js",
+    "backend:monitor": "cd backend-express && node monitor.js",
+    "frontend": "cd frontend && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "Type Editor - 结构化文档编辑器工作区"
 }

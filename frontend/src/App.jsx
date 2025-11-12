@@ -5,6 +5,7 @@ import TopBar from './components/TopBar';
 import EditorToolbar from './components/EditorToolbar';
 import BibTeXModal from './components/BibTeXModal';
 import ImagePreviewModal from './components/ImagePreviewModal';
+import ErrorNotification from './components/ErrorNotification';
 import { documentAPI, nodeAPI, contentAPI, uploadAPI } from './services/api';
 import { computeWordCount } from './utils/wordCount';
 
@@ -22,8 +23,54 @@ function App() {
   const [previewImage, setPreviewImage] = useState(null);
   const [formattingToolbarEnabled, setFormattingToolbarEnabled] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100); // 缩放级别: 80, 90, 100, 110, 120
+  const [error, setError] = useState(null);
   const editorRef = useRef(null);
   const citationNavigationIndex = useRef({});
+  
+  // Request deduplication: track ongoing requests
+  const ongoingRequestsRef = useRef(new Map());
+  
+  // Helper function to handle errors consistently
+  const handleError = useCallback((error, customMessage = null) => {
+    // In development, show more detailed error information
+    const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === 'development';
+    
+    let message = error?.userMessage || customMessage || error?.message || 'An unexpected error occurred';
+    
+    // Add more details in development mode
+    if (isDevelopment && error?.response?.data?.details) {
+      console.error('Error details:', error.response.data.details);
+    }
+    
+    if (isDevelopment && error?.response) {
+      console.error('Full error response:', {
+        status: error.response.status,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    }
+    
+    setError(message);
+    console.error('Error:', error);
+  }, []);
+  
+  // Helper function for request deduplication
+  const deduplicateRequest = useCallback((key, requestFn) => {
+    // If request is already in progress, return the existing promise
+    if (ongoingRequestsRef.current.has(key)) {
+      return ongoingRequestsRef.current.get(key);
+    }
+    
+    // Create new request
+    const promise = requestFn()
+      .finally(() => {
+        // Remove from ongoing requests when done
+        ongoingRequestsRef.current.delete(key);
+      });
+    
+    ongoingRequestsRef.current.set(key, promise);
+    return promise;
+  }, []);
 
   useEffect(() => {
     const initApp = async () => {
@@ -41,7 +88,7 @@ function App() {
         setDocument(doc);
         await loadNodes(doc.id);
       } catch (error) {
-        console.error('Error initializing app:', error);
+        handleError(error, 'Failed to initialize application');
       }
     };
 
@@ -104,67 +151,71 @@ function App() {
     }
   };
 
-  const loadNodes = async (documentId) => {
-    try {
-      const response = await nodeAPI.list(documentId);
-      setNodes(response.data);
-      
-      const sectionNodes = response.data.filter(n => n.node_type === 'section');
-      
-      const sectionContents = await Promise.all(
-        sectionNodes.map(async (node) => {
-          try {
-            const contentResponse = await contentAPI.get(node.id);
-            return contentResponse.data.content_json;
-          } catch (error) {
-            console.error(`Error loading content for section ${node.id}:`, error);
-            return null;
-          }
-        })
-      );
-      
-      const citationCounts = calculateCitationCounts(sectionContents);
-      
-      const referenceNodes = response.data.filter(n => n.node_type === 'reference');
-      const referencesWithContent = await Promise.all(
-        referenceNodes.map(async (node) => {
-          try {
-            const contentResponse = await contentAPI.get(node.id);
-            const contentData = contentResponse.data.content_json;
-            let bibtex = '';
-            
-            if (contentData) {
-              const parsed = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
-              bibtex = parsed.bibtex || '';
+  const loadNodes = useCallback(async (documentId) => {
+    // Use request deduplication to prevent multiple simultaneous loads
+    return deduplicateRequest(`loadNodes-${documentId}`, async () => {
+      try {
+        const response = await nodeAPI.list(documentId);
+        setNodes(response.data);
+        
+        const sectionNodes = response.data.filter(n => n.node_type === 'section');
+        
+        // Batch load section contents in parallel
+        const sectionContents = await Promise.all(
+          sectionNodes.map(async (node) => {
+            try {
+              const contentResponse = await contentAPI.get(node.id);
+              return contentResponse.data.content_json;
+            } catch (error) {
+              console.error(`Error loading content for section ${node.id}:`, error);
+              return null;
             }
-            
-            return {
-              id: node.id,
-              title: node.title,
-              content: bibtex,
-              usageCount: citationCounts[node.title] || 0
-            };
-          } catch (error) {
-            console.error(`Error loading content for reference ${node.id}:`, error);
-            return {
-              id: node.id,
-              title: node.title,
-              content: '',
-              usageCount: 0
-            };
-          }
-        })
-      );
-      
-      setReferences(referencesWithContent);
-      
-      if (response.data.length > 0 && !selectedNode) {
-        setSelectedNode(response.data[0]);
+          })
+        );
+        
+        const citationCounts = calculateCitationCounts(sectionContents);
+        
+        const referenceNodes = response.data.filter(n => n.node_type === 'reference');
+        const referencesWithContent = await Promise.all(
+          referenceNodes.map(async (node) => {
+            try {
+              const contentResponse = await contentAPI.get(node.id);
+              const contentData = contentResponse.data.content_json;
+              let bibtex = '';
+              
+              if (contentData) {
+                const parsed = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
+                bibtex = parsed.bibtex || '';
+              }
+              
+              return {
+                id: node.id,
+                title: node.title,
+                content: bibtex,
+                usageCount: citationCounts[node.title] || 0
+              };
+            } catch (error) {
+              console.error(`Error loading content for reference ${node.id}:`, error);
+              return {
+                id: node.id,
+                title: node.title,
+                content: '',
+                usageCount: 0
+              };
+            }
+          })
+        );
+        
+        setReferences(referencesWithContent);
+        
+        if (response.data.length > 0 && !selectedNode) {
+          setSelectedNode(response.data[0]);
+        }
+      } catch (error) {
+        handleError(error, 'Failed to load nodes');
       }
-    } catch (error) {
-      console.error('Error loading nodes:', error);
-    }
-  };
+    });
+  }, [deduplicateRequest, selectedNode, handleError]);
 
   useEffect(() => {
     if (selectedNode) {
@@ -230,12 +281,12 @@ function App() {
             }
           }
         } catch (error) {
-          console.error('Error saving content:', error);
+          handleError(error, 'Failed to save content');
         } finally {
           setIsSaving(false);
         }
       }
-    }, 500);
+    }, 2000); // Increased from 500ms to 2000ms for better performance
 
     setSaveTimeout(timeout);
   }, [selectedNode, saveTimeout, document, nodes]);
@@ -268,7 +319,7 @@ function App() {
       await loadNodes(document.id);
       setSelectedNode(response.data);
     } catch (error) {
-      console.error('Error creating node:', error);
+      handleError(error, 'Failed to create node');
     }
   };
 
@@ -292,7 +343,7 @@ function App() {
         // 不自动跳转到新创建的Reference，保持当前选中的Section
       }
     } catch (error) {
-      console.error('Error saving BibTeX:', error);
+      handleError(error, 'Failed to save reference');
     }
   };
 
@@ -317,7 +368,7 @@ function App() {
       // Reload nodes but keep current selection
       await loadNodes(document.id);
     } catch (error) {
-      console.error('Error uploading image:', error);
+      handleError(error, 'Failed to upload image');
     }
   };
 
@@ -339,7 +390,7 @@ function App() {
       });
       setIsBibTeXModalOpen(true);
     } catch (error) {
-      console.error('Error loading reference:', error);
+      handleError(error, 'Failed to load reference');
       setEditingReference(node);
       setIsBibTeXModalOpen(true);
     }
@@ -358,7 +409,7 @@ function App() {
         setSelectedNode(null);
       }
     } catch (error) {
-      console.error('Error deleting reference:', error);
+      handleError(error, 'Failed to delete reference');
     }
   };
 
@@ -390,7 +441,7 @@ function App() {
         setSelectedNode(null);
       }
     } catch (error) {
-      console.error('Error deleting node:', error);
+      handleError(error, 'Failed to delete section');
     }
   };
 
@@ -407,7 +458,7 @@ function App() {
 
       await loadNodes(document.id);
     } catch (error) {
-      console.error('Error reordering nodes:', error);
+      handleError(error, 'Failed to reorder nodes');
     }
   };
 
@@ -418,7 +469,7 @@ function App() {
       await documentAPI.update(document.id, newTitle);
       setDocument({ ...document, title: newTitle });
     } catch (error) {
-      console.error('Error updating document title:', error);
+      handleError(error, 'Failed to update document title');
     }
   };
 
@@ -571,6 +622,10 @@ function App() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      <ErrorNotification 
+        error={error} 
+        onDismiss={() => setError(null)} 
+      />
       <BibTeXModal
         isOpen={isBibTeXModalOpen}
         onClose={() => {

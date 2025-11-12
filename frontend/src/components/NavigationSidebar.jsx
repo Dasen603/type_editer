@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileText, Plus, Star, ArrowUpCircle, User, Headphones, Settings } from 'lucide-react';
+import { FileText, Star, Headphones, Plus } from 'lucide-react';
 
 const NavigationSidebar = () => {
   const location = useLocation();
@@ -10,16 +10,13 @@ const NavigationSidebar = () => {
   };
 
   const navItems = [
+    { path: '/start', icon: Plus, label: 'Start', tooltip: 'Start Writing' },
     { path: '/projects', icon: FileText, label: 'Docs', tooltip: 'My Documents' },
-    { path: '/templates', icon: Plus, label: 'Start', tooltip: 'Template Library' },
     { path: '/starred', icon: Star, label: 'Starred', tooltip: 'Starred Documents' },
   ];
 
   const bottomItems = [
-    { path: '/upgrade', icon: ArrowUpCircle, label: 'Upgrade', tooltip: 'Upgrade Plan' },
-    { path: '/user', icon: User, label: 'User', tooltip: 'User Profile' },
     { path: '/contact', icon: Headphones, label: 'Contact', tooltip: 'Contact Support' },
-    { path: '/settings', icon: Settings, label: 'Settings', tooltip: 'Settings' },
   ];
 
   const NavButton = ({ path, icon: Icon, label, tooltip }) => (
@@ -42,7 +39,7 @@ const NavigationSidebar = () => {
       <div className="mb-6">
         <img
             src="/logo.png"      // 放 public 后用绝对路径
-            alt="Type Logo"
+            alt="type Logo"
             className="w-10 h-10 rounded-lg object-contain"
           />
       </div>

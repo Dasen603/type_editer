@@ -23,6 +23,7 @@ pub struct Node {
     pub title: String,
     pub order_index: i64,
     pub indent_level: i64,
+    pub image_url: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -35,6 +36,7 @@ pub struct CreateNodeRequest {
     pub title: String,
     pub order_index: i64,
     pub indent_level: i64,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +45,7 @@ pub struct UpdateNodeRequest {
     pub order_index: Option<i64>,
     pub indent_level: Option<i64>,
     pub parent_id: Option<i64>,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

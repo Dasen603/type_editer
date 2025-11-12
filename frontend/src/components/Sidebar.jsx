@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Plus, FileText, Image, GripVertical, X, Edit2 } from 'lucide-react';
 import {
   DndContext,
@@ -69,6 +70,8 @@ const SortableOutlineItem = ({ node, selectedNodeId, onNodeSelect, onDeleteNode 
 };
 
 const Sidebar = ({ nodes, onNodeSelect, selectedNodeId, onAddNode, onDeleteNode, onReorderNodes, onEditReference, onDeleteReference, onInsertCitation, canInsertCitation, referenceCounts, onUploadImage, onPreviewImage, onNavigateToCitation }) => {
+  const navigate = useNavigate();
+  
   // 在 citation key 中自动添加空格（在数字和字母之间、大小写变化处）
   const formatCitationKey = (key) => {
     return key
@@ -133,7 +136,12 @@ const Sidebar = ({ nodes, onNodeSelect, selectedNodeId, onAddNode, onDeleteNode,
       {/* Logo and Search */}
       <div className="p-4 border-b border-gray-200">
         <div className="mb-4">
-          <img src="/logo.png" alt="Type" className="w-8 h-8 rounded" />
+          <img 
+            src="/logo.png" 
+            alt="type" 
+            className="w-8 h-8 rounded cursor-pointer hover:opacity-80 transition-opacity" 
+            onClick={() => navigate('/projects')}
+          />
         </div>
         <div className="relative">
           <input

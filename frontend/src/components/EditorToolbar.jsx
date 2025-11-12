@@ -186,10 +186,11 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
     <>
       {showLinkInput && (
         <div 
-          className="fixed z-50"
+          className="fixed"
           style={{
             top: `${linkPosition.top}px`,
             left: `${linkPosition.left}px`,
+            zIndex: 2100,
           }}
         >
           <div className="bg-white rounded-lg shadow-xl border border-gray-200 animate-scaleIn">
@@ -241,7 +242,7 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
           </div>
         </div>
       )}
-      <div className="sticky top-0 flex items-center justify-between px-4 py-2.5 bg-white border border-gray-200 rounded-lg shadow-sm mb-4 select-none" style={{ zIndex: 9999 }}>
+      <div className="sticky top-0 flex items-center justify-between px-4 py-2.5 bg-white border border-gray-200 rounded-lg shadow-sm mb-4 select-none" style={{ zIndex: 2000 }}>
       {/* Left: Formatting Tools */}
       <div className="flex items-center space-x-0.5">
         <button 
@@ -357,10 +358,11 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
           {showMoreMenu && (
             <>
               <div 
-                className="fixed inset-0 z-20" 
+                className="fixed inset-0" 
+                style={{ zIndex: 2100 }}
                 onClick={() => setShowMoreMenu(false)}
               ></div>
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-30 min-w-48 animate-scaleIn">
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-48 animate-scaleIn" style={{ zIndex: 2200 }}>
                 <button
                   onClick={() => {
                     onToggleFormattingToolbar();
@@ -397,10 +399,11 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
           {showZoomMenu && (
             <>
               <div 
-                className="fixed inset-0 z-20" 
+                className="fixed inset-0" 
+                style={{ zIndex: 2100 }}
                 onClick={() => setShowZoomMenu(false)}
               ></div>
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-30 min-w-32 animate-scaleIn">
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-32 animate-scaleIn" style={{ zIndex: 2200 }}>
                 {[70, 80, 90, 100, 110, 120, 130, 140, 150].map((level) => (
                   <button
                     key={level}

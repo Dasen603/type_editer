@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 const BibTeXModal = ({ isOpen, onClose, onSave, initialData = null }) => {
   const [bibtex, setBibtex] = useState('');
   const [citationKey, setCitationKey] = useState('');
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -80,6 +81,14 @@ const BibTeXModal = ({ isOpen, onClose, onSave, initialData = null }) => {
     }
   };
 
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+    }, 200);
+  };
+
   const handleSave = () => {
     if (bibtex.trim()) {
       const key = citationKey || extractCitationKey(bibtex) || 'Unknown';
@@ -89,21 +98,21 @@ const BibTeXModal = ({ isOpen, onClose, onSave, initialData = null }) => {
       });
       setBibtex('');
       setCitationKey('');
-      onClose();
+      handleClose();
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !isClosing) return null;
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none select-none">
-      <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-4xl h-auto flex flex-col animate-scaleIn pointer-events-auto" style={{ aspectRatio: '16/9', maxHeight: '90vh' }}>
+    <div className="fixed inset-0 flex items-center justify-center pointer-events-none select-none" style={{ zIndex: 4000 }}>
+      <div className={`relative bg-white rounded-lg shadow-2xl w-full max-w-4xl h-auto flex flex-col pointer-events-auto ${isClosing ? 'animate-scaleOut' : 'animate-scaleIn'}`} style={{ aspectRatio: '16/9', maxHeight: '90vh' }}>
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">
             {initialData ? 'Edit BibTeX Entry' : 'Add BibTeX Entry'}
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
           >
             <X className="w-5 h-5" />
@@ -159,7 +168,7 @@ const BibTeXModal = ({ isOpen, onClose, onSave, initialData = null }) => {
 
         <div className="flex items-center justify-end gap-2 p-4 border-t">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
           >
             Cancel

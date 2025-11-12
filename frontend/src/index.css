@@ -34,6 +34,25 @@ code {
   }
 }
 
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.2s ease-out;
+}
+
+.animate-scaleOut {
+  animation: scaleOut 0.2s ease-in;
+}
+
 @keyframes fadeInScale {
   from {
     opacity: 0;
@@ -103,11 +122,11 @@ code {
 
 /* 确保 BlockNote 的所有浮动元素不会覆盖顶部工具栏 */
 [class*="bn-"] {
-  z-index: 40 !important;
+  z-index: 100 !important;
 }
 
 .bn-container [class*="mantine-"] {
-  z-index: 40 !important;
+  z-index: 100 !important;
 }
 
 /* BlockNote 侧边菜单相关 */
@@ -115,5 +134,5 @@ code {
 .bn-drag-handle-menu,
 [data-side-menu],
 [data-drag-handle] {
-  z-index: 40 !important;
+  z-index: 100 !important;
 }

@@ -517,42 +517,47 @@ const Editor = forwardRef(({ content, onChange, references, formattingToolbarEna
   };
 
   useEffect(() => {
-    if (!isUserTyping.current && content && editor) {
-      try {
-        const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
-        if (parsedContent && Array.isArray(parsedContent)) {
-          const currentContent = JSON.stringify(editor.document);
-          const newContent = JSON.stringify(parsedContent);
-          
-          if (currentContent !== newContent) {
-            // 检查用户是否有选中文字
-            const tiptapEditor = editor._tiptapEditor;
-            const hasSelection = tiptapEditor && !tiptapEditor.state.selection.empty;
+    // 使用 setTimeout 延迟更新，避免在渲染过程中调用 flushSync
+    const timeoutId = setTimeout(() => {
+      if (!isUserTyping.current && content && editor) {
+        try {
+          const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
+          if (parsedContent && Array.isArray(parsedContent)) {
+            const currentContent = JSON.stringify(editor.document);
+            const newContent = JSON.stringify(parsedContent);
             
-            // 如果用户正在选中文字，不要替换内容，避免破坏选区
-            if (!hasSelection) {
-              editor.replaceBlocks(editor.document, parsedContent);
+            if (currentContent !== newContent) {
+              // 检查用户是否有选中文字
+              const tiptapEditor = editor._tiptapEditor;
+              const hasSelection = tiptapEditor && !tiptapEditor.state.selection.empty;
+              
+              // 如果用户正在选中文字，不要替换内容，避免破坏选区
+              if (!hasSelection) {
+                editor.replaceBlocks(editor.document, parsedContent);
+              }
             }
           }
+        } catch (e) {
+          console.error('Error parsing content:', e);
         }
-      } catch (e) {
-        console.error('Error parsing content:', e);
+      } else if (!isUserTyping.current && !content && editor) {
+        const defaultContent = [
+          {
+            type: "heading",
+            props: {
+              level: 1
+            },
+            content: []
+          }
+        ];
+        editor.replaceBlocks(editor.document, defaultContent);
       }
-    } else if (!isUserTyping.current && !content && editor) {
-      const defaultContent = [
-        {
-          type: "heading",
-          props: {
-            level: 1
-          },
-          content: []
-        }
-      ];
-      editor.replaceBlocks(editor.document, defaultContent);
-    }
+      
+      isUserTyping.current = false;
+    }, 0);
     
-    isUserTyping.current = false;
-  }, [content]);
+    return () => clearTimeout(timeoutId);
+  }, [content, editor]);
 
   // 计算应该插入引用的位置（单词末尾）
   const getWordEndPosition = (tiptapEditor, initialPos) => {
@@ -852,7 +857,7 @@ const Editor = forwardRef(({ content, onChange, references, formattingToolbarEna
               height: '3px',
               backgroundColor: '#3b82f6',
               pointerEvents: 'none',
-              zIndex: 1000,
+              zIndex: 1500,
               boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)'
             }}
           />

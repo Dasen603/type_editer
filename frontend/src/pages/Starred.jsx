@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Star, FolderOpen, Trash2 } from 'lucide-react';
 import { documentAPI } from '../services/api';
 
-const Projects = () => {
+const Starred = () => {
   const [projects, setProjects] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [starredProjects, setStarredProjects] = useState(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
+  const loadProjects = async () => {
+    try {
+      const response = await documentAPI.list();
+      setProjects(response.data);
+    } catch (error) {
+      console.error('Error loading projects:', error);
+    }
+  };
+
+  // 当路由变化到 Starred 页面时，刷新项目列表和收藏状态
   useEffect(() => {
     loadProjects();
     // 从 localStorage 加载收藏状态
@@ -20,16 +31,32 @@ const Projects = () => {
         console.error('Error loading starred projects:', e);
       }
     }
-  }, []);
+  }, [location.pathname]);
 
-  const loadProjects = async () => {
-    try {
-      const response = await documentAPI.list();
-      setProjects(response.data);
-    } catch (error) {
-      console.error('Error loading projects:', error);
-    }
-  };
+  // 监听 localStorage 变化和自定义事件（当其他页面修改收藏状态时）
+  useEffect(() => {
+    const handleStorageChange = () => {
+      // 重新加载项目列表和收藏状态
+      loadProjects();
+      const savedStarred = localStorage.getItem('starredProjects');
+      if (savedStarred) {
+        try {
+          setStarredProjects(new Set(JSON.parse(savedStarred)));
+        } catch (e) {
+          console.error('Error loading starred projects:', e);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    // 自定义事件，用于同页面内的更新
+    window.addEventListener('starredUpdated', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('starredUpdated', handleStorageChange);
+    };
+  }, []);
 
   const handleProjectClick = (projectId) => {
     navigate(`/editor/${projectId}`);
@@ -51,6 +78,7 @@ const Projects = () => {
         const newSet = new Set(prev);
         newSet.delete(projectId);
         localStorage.setItem('starredProjects', JSON.stringify(Array.from(newSet)));
+        window.dispatchEvent(new Event('starredUpdated'));
         return newSet;
       });
     } catch (error) {
@@ -70,13 +98,18 @@ const Projects = () => {
         newSet.add(projectId);
       }
       localStorage.setItem('starredProjects', JSON.stringify(Array.from(newSet)));
-      // 触发自定义事件，通知其他页面更新
       window.dispatchEvent(new Event('starredUpdated'));
       return newSet;
     });
   };
 
-  const filteredProjects = projects.filter(project =>
+  // 过滤出收藏的文档
+  const starredProjectsList = projects.filter(project => 
+    starredProjects.has(project.id)
+  );
+
+  // 再根据搜索查询过滤
+  const filteredProjects = starredProjectsList.filter(project =>
     project.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -143,25 +176,25 @@ const Projects = () => {
         <div 
           className="relative mb-8 rounded-2xl overflow-hidden"
           style={{
-            background: 'linear-gradient(135deg, #2d5016 0%, #4a7c1f 50%, #6b9d2c 100%)',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #eab308 50%, #facc15 100%)',
             minHeight: '140px'
           }}
         >
           <div className="absolute inset-0 opacity-20">
-            <div className="absolute top-8 right-16 w-24 h-24 bg-yellow-200/40 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-8 left-16 w-32 h-32 bg-green-400/30 rounded-full blur-3xl"></div>
+            <div className="absolute top-8 right-16 w-24 h-24 bg-yellow-300/40 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-8 left-16 w-32 h-32 bg-yellow-400/30 rounded-full blur-3xl"></div>
           </div>
           <div className="relative px-12 py-6 flex items-center justify-between">
-            <h1 className="text-4xl font-bold text-white">Projects</h1>
+            <h1 className="text-4xl font-bold text-white">Starred</h1>
             <div className="opacity-60">
-              <FolderOpen className="w-24 h-24 text-yellow-200/60" strokeWidth={1.5} />
+              <Star className="w-24 h-24 text-yellow-100/80" strokeWidth={1.5} fill="currentColor" />
             </div>
           </div>
         </div>
 
         {filteredProjects.length > 0 && (
           <div className="mb-8">
-            <h2 className="text-lg font-bold mb-4">Recents</h2>
+            <h2 className="text-lg font-bold mb-4">Starred Documents</h2>
             <div 
               style={{ 
                 display: 'grid',
@@ -171,7 +204,7 @@ const Projects = () => {
                 rowGap: '12px'
               }}
             >
-              {filteredProjects.slice(0, 8).map((project) => (
+              {filteredProjects.map((project) => (
                 <ProjectCard key={project.id} project={project} />
               ))}
             </div>
@@ -180,8 +213,8 @@ const Projects = () => {
 
         {filteredProjects.length === 0 && (
           <div className="text-center py-20 text-gray-400">
-            <p className="text-xl">No projects found</p>
-            <p className="mt-2">Start by creating a new project</p>
+            <p className="text-xl">No starred documents</p>
+            <p className="mt-2">Click the star icon in the document list to star documents</p>
           </div>
         )}
       </div>
@@ -189,4 +222,5 @@ const Projects = () => {
   );
 };
 
-export default Projects;
+export default Starred;
+

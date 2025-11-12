@@ -1,14 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ChevronRight,
   Undo2,
   Redo2,
   Check,
   Download,
-  Square,
-  Minus,
-  X,
-  ChevronDown,
 } from 'lucide-react';
 
 const TopBar = ({ 
@@ -18,24 +14,88 @@ const TopBar = ({
   isSaving,
   onUndo,
   onRedo,
-  onTitleChange
+  onTitleChange,
+  onBackToDocs
 }) => {
-  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState('ieee');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(documentTitle);
+  const clickTimerRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const templates = [
-    { id: 'ieee', name: 'IEEE Conference' },
-    { id: 'acm', name: 'ACM Article' },
-    { id: 'springer', name: 'Springer LNCS' },
-    { id: 'article', name: 'Basic Article' },
-    { id: 'report', name: 'Technical Report' }
-  ];
+  React.useEffect(() => {
+    setEditedTitle(documentTitle);
+  }, [documentTitle]);
 
-  const handleTemplateSelect = (templateId) => {
-    setSelectedTemplate(templateId);
-    setShowTemplateMenu(false);
-    if (onExport) {
-      onExport(templateId);
+  // 当进入编辑模式时，选中所有文本
+  useEffect(() => {
+    if (isEditingTitle && inputRef.current) {
+      inputRef.current.select();
+    }
+  }, [isEditingTitle]);
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleTitleClick = () => {
+    // 清除之前的定时器
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    // 延迟执行单击操作，等待可能的双击
+    clickTimerRef.current = setTimeout(() => {
+      // 单击：返回文档列表
+      if (onBackToDocs) {
+        onBackToDocs();
+      }
+    }, 300); // 300ms延迟，等待双击事件
+  };
+
+  const handleTitleDoubleClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // 清除单击定时器
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    
+    // 双击：编辑文档名称
+    setIsEditingTitle(true);
+  };
+
+  const handleSave = () => {
+    if (editedTitle.trim() && editedTitle !== documentTitle && onTitleChange) {
+      onTitleChange(editedTitle.trim());
+    } else {
+      setEditedTitle(documentTitle);
+    }
+    setIsEditingTitle(false);
+  };
+
+  const handleCancel = () => {
+    setEditedTitle(documentTitle);
+    setIsEditingTitle(false);
+  };
+
+  const handleTitleBlur = () => {
+    handleSave();
+  };
+
+  const handleTitleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
     }
   };
 
@@ -43,7 +103,28 @@ const TopBar = ({
     <div className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 select-none">
       {/* Left: Document Path with Save Indicator */}
       <div className="flex items-center space-x-2 text-sm">
-        <span className="text-gray-600 font-medium">{documentTitle}</span>
+        {isEditingTitle ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editedTitle}
+            onChange={(e) => setEditedTitle(e.target.value)}
+            onBlur={handleTitleBlur}
+            onKeyDown={handleTitleKeyDown}
+            className="text-gray-800 font-medium bg-blue-50 border border-blue-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[150px] max-w-[300px] text-sm shadow-sm transition-all duration-200"
+            autoFocus
+            placeholder="Document name"
+          />
+        ) : (
+          <span 
+            className="text-gray-600 font-medium cursor-pointer hover:text-gray-800 transition-colors px-2 py-1 rounded hover:bg-gray-100" 
+            onClick={handleTitleClick}
+            onDoubleClick={handleTitleDoubleClick}
+            title="Click to go back to Docs, Double-click to edit document name"
+          >
+            {documentTitle}
+          </span>
+        )}
         <ChevronRight className="w-4 h-4 text-gray-400" />
         <span 
           className="font-medium text-gray-800 max-w-xs truncate" 
@@ -73,69 +154,29 @@ const TopBar = ({
         <button 
           onClick={onUndo}
           className="p-2 hover:bg-gray-100 rounded transition-colors"
-          title="撤回 (Ctrl+Z)"
+          title="Undo (Ctrl+Z)"
         >
           <Undo2 className="w-4 h-4 text-gray-600" />
         </button>
         <button 
           onClick={onRedo}
           className="p-2 hover:bg-gray-100 rounded transition-colors"
-          title="重做 (Ctrl+Y)"
+          title="Redo (Ctrl+Y)"
         >
           <Redo2 className="w-4 h-4 text-gray-600" />
         </button>
       </div>
 
-      {/* Right: Export and Window Controls */}
+      {/* Right: Export */}
       <div className="flex items-center space-x-2">
-        <div className="relative">
-          <button
-            onClick={() => setShowTemplateMenu(!showTemplateMenu)}
-            className="flex items-center space-x-2 px-3 py-1.5 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span className="text-sm font-medium">
-              {templates.find(t => t.id === selectedTemplate)?.name || 'Template'}
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-          </button>
-
-          {showTemplateMenu && (
-            <>
-              <div 
-                className="fixed inset-0" 
-                style={{ zIndex: 99998 }}
-                onClick={() => setShowTemplateMenu(false)}
-              ></div>
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-48" style={{ zIndex: 99999 }}>
-                {templates.map(template => (
-                  <button
-                    key={template.id}
-                    onClick={() => handleTemplateSelect(template.id)}
-                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between ${
-                      selectedTemplate === template.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                    }`}
-                  >
-                    <span>{template.name}</span>
-                    {selectedTemplate === template.id && <span className="text-blue-700">✓</span>}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center ml-2">
-          <button className="p-2 hover:bg-gray-100 rounded transition-colors">
-            <Minus className="w-4 h-4 text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded transition-colors">
-            <Square className="w-4 h-4 text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded transition-colors">
-            <X className="w-4 h-4 text-gray-600" />
-          </button>
-        </div>
+        <button
+          onClick={onExport}
+          className="flex items-center space-x-2 px-3 py-1.5 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+          title="Export document"
+        >
+          <Download className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-medium text-gray-700">Export</span>
+        </button>
       </div>
     </div>
   );
