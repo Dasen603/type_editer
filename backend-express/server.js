@@ -10,13 +10,20 @@ const compression = require('compression');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// API rate limiting
+// API rate limiting - more generous in development
+const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.RATE_LIMIT_MAX || 100, // limit each IP to 100 requests per windowMs
+  max: isDevelopment ? 1000 : (process.env.RATE_LIMIT_MAX || 100), // 1000 in dev, 100 in production
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting for local IPs in development
+  skip: (req) => {
+    if (!isDevelopment) return false;
+    const ip = req.ip || req.connection.remoteAddress;
+    return ip === '127.0.0.1' || ip === '::1' || ip?.startsWith('::ffff:127.0.0.1');
+  }
 });
 
 // CORS configuration
@@ -1121,7 +1128,24 @@ app.post('/api/nodes', validateInput.node, (req, res) => {
     [document_id, parent_id, node_type, title, order_index, indent_level, image_url]
   )
     .then(function(result) {
-      return dbHelpers.get('SELECT * FROM nodes WHERE id = ?', [result.lastID]);
+      const nodeId = result.lastID;
+      
+      // 为 section 和 reference 类型的节点自动创建空的 content 记录
+      if (node_type === 'section' || node_type === 'reference') {
+        const defaultContent = node_type === 'section' 
+          ? JSON.stringify([{ type: "heading", props: { level: 1 }, content: [] }])
+          : JSON.stringify({ bibtex: '' });
+        
+        return dbHelpers.run(
+          'INSERT INTO content (node_id, content_json) VALUES (?, ?)',
+          [nodeId, defaultContent]
+        ).then(() => nodeId);
+      }
+      
+      return nodeId;
+    })
+    .then((nodeId) => {
+      return dbHelpers.get('SELECT * FROM nodes WHERE id = ?', [nodeId]);
     })
     .then(row => res.json(row))
     .catch(err => sendErrorResponse(res, 500, 'Failed to create node', err));
@@ -1220,9 +1244,31 @@ app.get('/api/content/:node_id', validateInput.nodeIdParam, (req, res) => {
     return sendErrorResponse(res, 503, 'Database not available', null);
   }
   
-  dbHelpers.get('SELECT * FROM content WHERE node_id = ?', [req.params.node_id])
+  const node_id = req.params.node_id;
+  
+  dbHelpers.get('SELECT * FROM content WHERE node_id = ?', [node_id])
     .then(row => {
-      if (!row) return res.status(404).json({ error: 'Content not found' });
+      if (!row) {
+        // 如果内容不存在，检查节点是否存在并返回默认空内容
+        return dbHelpers.get('SELECT node_type FROM nodes WHERE id = ?', [node_id])
+          .then(node => {
+            if (!node) {
+              return res.status(404).json({ error: 'Node not found' });
+            }
+            
+            // 返回默认空内容而不是 404
+            const defaultContent = node.node_type === 'section' 
+              ? JSON.stringify([{ type: "heading", props: { level: 1 }, content: [] }])
+              : JSON.stringify({ bibtex: '' });
+            
+            res.json({
+              id: null,
+              node_id: parseInt(node_id),
+              content_json: defaultContent,
+              updated_at: new Date().toISOString()
+            });
+          });
+      }
       res.json(row);
     })
     .catch(err => sendErrorResponse(res, 500, 'Failed to retrieve content', err));
@@ -1240,7 +1286,9 @@ app.put('/api/content/:node_id', validateInput.nodeIdParam, validateInput.conten
   dbHelpers.get('SELECT id FROM nodes WHERE id = ?', [node_id])
     .then(node => {
       if (!node) {
-        return res.status(404).json({ error: 'Node not found' });
+        // Return rejected promise to stop the chain
+        res.status(404).json({ error: 'Node not found' });
+        return Promise.reject(new Error('Node not found'));
       }
       
       // Now save the content
@@ -1250,13 +1298,28 @@ app.put('/api/content/:node_id', validateInput.nodeIdParam, validateInput.conten
         [node_id, content_json, content_json]
       );
     })
-    .then(() => dbHelpers.get('SELECT * FROM content WHERE node_id = ?', [node_id]))
-    .then(row => res.json(row))
+    .then((result) => {
+      // Only execute if the previous promise resolved (node exists and content saved)
+      if (result !== undefined) {
+        return dbHelpers.get('SELECT * FROM content WHERE node_id = ?', [node_id]);
+      }
+    })
+    .then(row => {
+      if (row) {
+        res.json(row);
+      }
+    })
     .catch(err => {
-      console.error('Error saving content:', err);
-      console.error('Node ID:', node_id);
-      console.error('Content length:', content_json?.length);
-      sendErrorResponse(res, 500, 'Failed to save content', err);
+      // Only send error if response hasn't been sent yet
+      if (!res.headersSent) {
+        // Don't log "Node not found" errors as they are expected
+        if (err.message !== 'Node not found') {
+          console.error('Error saving content:', err);
+          console.error('Node ID:', node_id);
+          console.error('Content length:', content_json?.length);
+        }
+        sendErrorResponse(res, 500, 'Failed to save content', err);
+      }
     });
 });
 

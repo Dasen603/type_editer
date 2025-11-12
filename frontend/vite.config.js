@@ -11,7 +11,13 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: true,
     hmr: {
-      clientPort: 5000,
+      // 在 GitHub Codespaces 中使用安全的 WebSocket (wss://)
+      protocol: 'wss',
+      host: process.env.CODESPACE_NAME 
+        ? `${process.env.CODESPACE_NAME}-5000.${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
+        : 'localhost',
+      clientPort: 443, // HTTPS 默认端口
+      timeout: 5000,
     },
     proxy: {
       '/api': {

@@ -211,8 +211,12 @@ function App() {
         if (response.data.length > 0 && !selectedNode) {
           setSelectedNode(response.data[0]);
         }
+        
+        // 返回加载的节点数据，供调用者使用
+        return response.data;
       } catch (error) {
         handleError(error, 'Failed to load nodes');
+        return [];
       }
     });
   }, [deduplicateRequest, selectedNode, handleError]);
@@ -268,6 +272,16 @@ function App() {
       if (selectedNode) {
         setIsSaving(true);
         try {
+          // 检查节点是否仍然存在（可能在延迟期间被删除）
+          const currentNodes = nodes;
+          const nodeStillExists = currentNodes.some(n => n.id === selectedNode.id);
+          
+          if (!nodeStillExists) {
+            console.log('Node was deleted, skipping save');
+            setIsSaving(false);
+            return;
+          }
+          
           await contentAPI.save(selectedNode.id, newContent);
           
           if (selectedNode.node_type === 'section') {
@@ -281,7 +295,13 @@ function App() {
             }
           }
         } catch (error) {
-          handleError(error, 'Failed to save content');
+          // 如果是"Node not found"错误，说明节点在保存前被删除了，这是正常情况，静默处理
+          if (error.response?.status === 404 && error.response?.data?.error === 'Node not found') {
+            console.log('Node was deleted before save completed, ignoring error');
+          } else {
+            // 其他错误才显示给用户
+            handleError(error, 'Failed to save content');
+          }
         } finally {
           setIsSaving(false);
         }
@@ -402,11 +422,19 @@ function App() {
     }
     
     try {
+      // 清除待处理的保存操作，防止删除后尝试保存已删除的节点
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        setSaveTimeout(null);
+      }
+      
       await nodeAPI.delete(nodeId);
       await loadNodes(document.id);
       
+      // 如果删除的是当前选中的节点，清除选中状态和内容
       if (selectedNode && selectedNode.id === nodeId) {
         setSelectedNode(null);
+        setContent(null);
       }
     } catch (error) {
       handleError(error, 'Failed to delete reference');
@@ -434,11 +462,28 @@ function App() {
     }
     
     try {
-      await nodeAPI.delete(nodeId);
-      await loadNodes(document.id);
+      // 清除待处理的保存操作，防止删除后尝试保存已删除的节点
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        setSaveTimeout(null);
+      }
       
-      if (selectedNode && selectedNode.id === nodeId) {
+      // 如果删除的是当前选中的节点，先清除选中状态和内容
+      const isDeletingSelectedNode = selectedNode && selectedNode.id === nodeId;
+      if (isDeletingSelectedNode) {
         setSelectedNode(null);
+        setContent(null);
+      }
+      
+      await nodeAPI.delete(nodeId);
+      const updatedNodes = await loadNodes(document.id);
+      
+      // 如果删除的是当前选中的节点，尝试选择下一个可用的 section
+      if (isDeletingSelectedNode && updatedNodes) {
+        const remainingSections = updatedNodes.filter(n => n.node_type === 'section');
+        if (remainingSections.length > 0) {
+          setSelectedNode(remainingSections[0]);
+        }
       }
     } catch (error) {
       handleError(error, 'Failed to delete section');

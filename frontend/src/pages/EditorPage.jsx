@@ -130,18 +130,21 @@ function EditorPage() {
     try {
       const sectionNodes = nodes.filter(n => n.node_type === 'section');
       
+      // 使用去重机制加载内容
       const sectionContents = await Promise.all(
         sectionNodes.map(async (node) => {
-          try {
-            const contentResponse = await contentAPI.get(node.id);
-            return contentResponse.data.content_json;
-          } catch (error) {
-            // Silently handle 404 errors (node/content already deleted)
-            if (error?.response?.status !== 404) {
-            console.error(`Error loading content for section ${node.id}:`, error);
+          return deduplicateRequest(`content-${node.id}`, async () => {
+            try {
+              const contentResponse = await contentAPI.get(node.id);
+              return contentResponse.data.content_json;
+            } catch (error) {
+              // Silently handle 404 errors (node/content already deleted)
+              if (error?.response?.status !== 404) {
+                console.error(`Error loading content for section ${node.id}:`, error);
+              }
+              return null;
             }
-            return null;
-          }
+          });
         })
       );
       
@@ -164,54 +167,60 @@ function EditorPage() {
         
         const sectionNodes = response.data.filter(n => n.node_type === 'section');
         
+        // 使用去重机制加载每个 section 的内容
         const sectionContents = await Promise.all(
           sectionNodes.map(async (node) => {
-            try {
-              const contentResponse = await contentAPI.get(node.id);
-              return contentResponse.data.content_json;
-            } catch (error) {
-              // Silently handle 404 errors (node/content already deleted)
-              if (error?.response?.status !== 404) {
-              console.error(`Error loading content for section ${node.id}:`, error);
+            return deduplicateRequest(`content-${node.id}`, async () => {
+              try {
+                const contentResponse = await contentAPI.get(node.id);
+                return contentResponse.data.content_json;
+              } catch (error) {
+                // Silently handle 404 errors (node/content already deleted)
+                if (error?.response?.status !== 404) {
+                  console.error(`Error loading content for section ${node.id}:`, error);
+                }
+                return null;
               }
-              return null;
-            }
+            });
           })
         );
         
         const citationCounts = calculateCitationCounts(sectionContents);
         
         const referenceNodes = response.data.filter(n => n.node_type === 'reference');
+        // 使用去重机制加载每个 reference 的内容
         const referencesWithContent = await Promise.all(
           referenceNodes.map(async (node) => {
-            try {
-              const contentResponse = await contentAPI.get(node.id);
-              const contentData = contentResponse.data.content_json;
-              let bibtex = '';
-              
-              if (contentData) {
-                const parsed = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
-                bibtex = parsed.bibtex || '';
+            return deduplicateRequest(`content-${node.id}`, async () => {
+              try {
+                const contentResponse = await contentAPI.get(node.id);
+                const contentData = contentResponse.data.content_json;
+                let bibtex = '';
+                
+                if (contentData) {
+                  const parsed = typeof contentData === 'string' ? JSON.parse(contentData) : contentData;
+                  bibtex = parsed.bibtex || '';
+                }
+                
+                return {
+                  id: node.id,
+                  title: node.title,
+                  content: bibtex,
+                  usageCount: citationCounts[node.title] || 0
+                };
+              } catch (error) {
+                // Silently handle 404 errors (node/content already deleted)
+                if (error?.response?.status !== 404) {
+                  console.error(`Error loading content for reference ${node.id}:`, error);
+                }
+                return {
+                  id: node.id,
+                  title: node.title,
+                  content: '',
+                  usageCount: 0
+                };
               }
-              
-              return {
-                id: node.id,
-                title: node.title,
-                content: bibtex,
-                usageCount: citationCounts[node.title] || 0
-              };
-            } catch (error) {
-              // Silently handle 404 errors (node/content already deleted)
-              if (error?.response?.status !== 404) {
-              console.error(`Error loading content for reference ${node.id}:`, error);
-              }
-              return {
-                id: node.id,
-                title: node.title,
-                content: '',
-                usageCount: 0
-              };
-            }
+            });
           })
         );
         
@@ -220,8 +229,12 @@ function EditorPage() {
         if (response.data.length > 0 && !selectedNode) {
           setSelectedNode(response.data[0]);
         }
+        
+        // 返回加载的节点数据
+        return response.data;
       } catch (error) {
         handleError(error, 'Failed to load nodes');
+        return [];
       }
     });
   }, [deduplicateRequest, selectedNode, handleError]);
@@ -236,18 +249,20 @@ function EditorPage() {
     }
   }, [selectedNode]);
 
-  const loadContent = async (nodeId) => {
-    try {
-      const response = await contentAPI.get(nodeId);
-      setContent(response.data.content_json);
-    } catch (error) {
-      // Silently handle 404 errors (node/content already deleted)
-      if (error?.response?.status !== 404) {
-      console.error('Error loading content:', error);
+  const loadContent = useCallback(async (nodeId) => {
+    return deduplicateRequest(`content-${nodeId}`, async () => {
+      try {
+        const response = await contentAPI.get(nodeId);
+        setContent(response.data.content_json);
+      } catch (error) {
+        // Silently handle 404 errors (node/content already deleted)
+        if (error?.response?.status !== 404) {
+          console.error('Error loading content:', error);
+        }
+        setContent(null);
       }
-      setContent(null);
-    }
-  };
+    });
+  }, [deduplicateRequest]);
 
   const extractTitleFromContent = (contentJson) => {
     try {
@@ -408,15 +423,19 @@ function EditorPage() {
     }
     
     try {
-      await nodeAPI.delete(nodeId);
+      // 清除待处理的保存操作，防止删除后尝试保存已删除的节点
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        setSaveTimeout(null);
+      }
       
-      // Clear selected node if it's the one being deleted
+      // 如果删除的是当前选中的节点，先清除选中状态和内容
       if (selectedNode && selectedNode.id === nodeId) {
         setSelectedNode(null);
         setContent(null);
       }
       
-      // Reload nodes after deletion
+      await nodeAPI.delete(nodeId);
       await loadNodes(document.id);
     } catch (error) {
       handleError(error, 'Failed to delete reference');
@@ -435,16 +454,29 @@ function EditorPage() {
     }
     
     try {
-      await nodeAPI.delete(nodeId);
+      // 清除待处理的保存操作，防止删除后尝试保存已删除的节点
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        setSaveTimeout(null);
+      }
       
-      // Clear selected node if it's the one being deleted
-      if (selectedNode && selectedNode.id === nodeId) {
+      // 如果删除的是当前选中的节点，先清除选中状态和内容
+      const isDeletingSelectedNode = selectedNode && selectedNode.id === nodeId;
+      if (isDeletingSelectedNode) {
         setSelectedNode(null);
         setContent(null);
       }
       
-      // Reload nodes after deletion
-      await loadNodes(document.id);
+      await nodeAPI.delete(nodeId);
+      const updatedNodes = await loadNodes(document.id);
+      
+      // 如果删除的是当前选中的节点，尝试选择下一个可用的 section
+      if (isDeletingSelectedNode && updatedNodes) {
+        const remainingSections = updatedNodes.filter(n => n.node_type === 'section');
+        if (remainingSections.length > 0) {
+          setSelectedNode(remainingSections[0]);
+        }
+      }
     } catch (error) {
       handleError(error, 'Failed to delete section');
     }
