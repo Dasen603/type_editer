@@ -7,15 +7,15 @@ const http = require('http');
 const options = {
   hostname: 'localhost',
   port: 3001,
-  path: '/api/documents',
+  path: '/api/documents/1/nodes',
   method: 'GET',
   headers: {
-    'Origin': 'http://localhost:5000',
+    'Origin': 'http://localhost:5173',
     'Content-Type': 'application/json'
   }
 };
 
-console.log('测试后端 API...');
+console.log('测试新的 /api/documents/1/nodes 端点...');
 console.log('请求:', options);
 console.log('');
 

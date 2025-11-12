@@ -7,7 +7,18 @@ import {
   Download,
 } from 'lucide-react';
 
-const TopBar = ({ 
+interface TopBarProps {
+  documentTitle: string;
+  currentNodeTitle?: string;
+  onExport?: () => void;
+  isSaving?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onTitleChange?: (newTitle: string) => void;
+  onBackToDocs?: () => void;
+}
+
+const TopBar: React.FC<TopBarProps> = ({ 
   documentTitle, 
   currentNodeTitle, 
   onExport,
@@ -19,8 +30,8 @@ const TopBar = ({
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(documentTitle);
-  const clickTimerRef = useRef(null);
-  const inputRef = useRef(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     setEditedTitle(documentTitle);
@@ -57,7 +68,7 @@ const TopBar = ({
     }, 300); // 300ms延迟，等待双击事件
   };
 
-  const handleTitleDoubleClick = (e) => {
+  const handleTitleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     
@@ -89,7 +100,7 @@ const TopBar = ({
     handleSave();
   };
 
-  const handleTitleKeyDown = (e) => {
+  const handleTitleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleSave();

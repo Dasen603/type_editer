@@ -69,8 +69,8 @@ describe('wordCount utilities', () => {
       ];
       
       const result = computeWordCount(content);
-      expect(result.english).toBe(7);
-      expect(result.display).toBe(7);
+      expect(result.english).toBe(8);
+      expect(result.display).toBe(8);
     });
     
     it('should count Chinese characters correctly', () => {

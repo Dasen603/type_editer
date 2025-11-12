@@ -6,23 +6,70 @@ import {
   List,
   ListOrdered,
   Link,
-  Search,
   MoreHorizontal,
-  Maximize2,
-  ZoomIn,
-  ZoomOut,
   WandSparkles
 } from 'lucide-react';
 
-const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolbarEnabled, onToggleFormattingToolbar, selectedNodeId, zoomLevel, onZoomChange }) => {
-  const [activeStyles, setActiveStyles] = useState({ bold: false, italic: false, underline: false });
-  const [currentBlock, setCurrentBlock] = useState({ type: null, level: null });
+interface ActiveStyles {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+}
+
+interface CurrentBlock {
+  type: string | null;
+  level: number | null;
+}
+
+interface Counts {
+  display: number;
+  tooltip?: number;
+}
+
+interface EditorMethods {
+  getActiveStyles: () => ActiveStyles;
+  getCurrentBlockType: () => CurrentBlock;
+  setHeading: (level: number) => void;
+  toggleBold: () => void;
+  toggleItalic: () => void;
+  toggleUnderline: () => void;
+  toggleBulletList: () => void;
+  toggleNumberedList: () => void;
+  openLinkEditor: () => { selectedText?: string } | null;
+  getSelectionCoords: () => { top: number; left: number } | null;
+  insertLink: (url: string) => void;
+  clearLinkHighlight: () => void;
+}
+
+interface EditorToolbarProps {
+  currentCounts?: Counts;
+  totalCounts?: Counts;
+  editorRef?: React.MutableRefObject<EditorMethods | null>;
+  formattingToolbarEnabled?: boolean;
+  onToggleFormattingToolbar?: () => void;
+  selectedNodeId?: number;
+  zoomLevel: number;
+  onZoomChange: (level: number) => void;
+}
+
+const EditorToolbar: React.FC<EditorToolbarProps> = ({ 
+  currentCounts, 
+  totalCounts, 
+  editorRef, 
+  formattingToolbarEnabled, 
+  onToggleFormattingToolbar, 
+  // selectedNodeId, 
+  zoomLevel, 
+  onZoomChange 
+}) => {
+  const [activeStyles, setActiveStyles] = useState<ActiveStyles>({ bold: false, italic: false, underline: false });
+  const [currentBlock, setCurrentBlock] = useState<CurrentBlock>({ type: null, level: null });
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkPosition, setLinkPosition] = useState({ top: 0, left: 0 });
   const [linkError, setLinkError] = useState('');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [selectedText, setSelectedText] = useState('');
+  const [, setSelectedText] = useState('');
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
 
@@ -43,15 +90,15 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
     };
 
     // 监听鼠标和键盘事件
-    const handleMouseDown = (e) => {
+    const handleMouseDown = (e: MouseEvent) => {
       // 检查是否点击在编辑器区域
       const editorContainer = document.querySelector('.bn-container');
-      if (editorContainer && editorContainer.contains(e.target)) {
+      if (editorContainer && editorContainer.contains(e.target as Node)) {
         setHasInteracted(true);
       }
     };
 
-    const handleKeyDown = (e) => {
+    const handleKeyDown = () => {
       // 检查焦点是否在编辑器内
       const editorContainer = document.querySelector('.bn-container');
       if (editorContainer && editorContainer.contains(document.activeElement)) {
@@ -76,7 +123,7 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
     };
   }, [editorRef, hasInteracted]);
 
-  const handleHeading = (level) => {
+  const handleHeading = (level: number) => {
     if (editorRef?.current?.setHeading) {
       editorRef.current.setHeading(level);
     }
@@ -117,7 +164,7 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
       const result = editorRef.current.openLinkEditor();
       if (result) {
         // 获取选区的位置
-        const coords = editorRef.current.getSelectionCoords();
+        const coords = editorRef.current.getSelectionCoords?.();
         if (coords) {
           setLinkPosition({
             top: coords.top - 60, // 在选中文字上方60px
@@ -131,7 +178,7 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
     }
   };
 
-  const handleLinkSubmit = (e) => {
+  const handleLinkSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     // 验证URL格式
@@ -174,7 +221,7 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
     setSelectedText('');
   };
 
-  const handleLinkInputChange = (e) => {
+  const handleLinkInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLinkUrl(e.target.value);
     // 清除错误提示
     if (linkError) {
@@ -365,7 +412,7 @@ const EditorToolbar = ({ currentCounts, totalCounts, editorRef, formattingToolba
               <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-48 animate-scaleIn" style={{ zIndex: 2200 }}>
                 <button
                   onClick={() => {
-                    onToggleFormattingToolbar();
+                    onToggleFormattingToolbar?.();
                     setShowMoreMenu(false);
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-3"

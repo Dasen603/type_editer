@@ -1,13 +1,15 @@
 import React, { useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 
+interface ErrorNotificationProps {
+  error: string | null;
+  onDismiss: () => void;
+}
+
 /**
  * Error notification component
- * @param {Object} props
- * @param {string|null} props.error - Error message to display
- * @param {Function} props.onDismiss - Callback when error is dismissed
  */
-const ErrorNotification = ({ error, onDismiss }) => {
+const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss }) => {
   useEffect(() => {
     if (error) {
       // Auto-dismiss after 5 seconds
@@ -17,6 +19,7 @@ const ErrorNotification = ({ error, onDismiss }) => {
       
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [error, onDismiss]);
   
   if (!error) return null;
@@ -57,4 +60,3 @@ const ErrorNotification = ({ error, onDismiss }) => {
 };
 
 export default ErrorNotification;
-

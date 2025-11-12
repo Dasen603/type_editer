@@ -1,15 +1,44 @@
 import React from 'react';
 import { createReactInlineContentSpec } from '@blocknote/react';
 
-const CitationContent = ({ editor, citationKey }) => {
-  const spanRef = React.useRef(null);
+interface Reference {
+  id: number;
+  type: string;
+  title: string;
+  author?: string;
+  journal?: string;
+  year?: number;
+  doi?: string;
+  url?: string;
+  pages?: string;
+  volume?: string;
+  issue?: string;
+  publisher?: string;
+  location?: string;
+  edition?: string;
+  isbn?: string;
+}
+
+interface EditorWithReferences {
+  references?: Reference[];
+  onCitationDelete?: (pos: number) => void;
+  _tiptapEditor: any;
+}
+
+interface CitationContentProps {
+  editor: EditorWithReferences;
+  citationKey: string;
+}
+
+const CitationContent: React.FC<CitationContentProps> = ({ editor, citationKey }) => {
+  const spanRef = React.useRef<HTMLSpanElement>(null);
 
   // 检查citation key是否对应一个有效的reference
   const references = editor.references || [];
   const isValid = references.some(ref => ref.title === citationKey);
 
   // 在 citation key 中自动添加空格（在数字和字母之间、大小写变化处）
-  const formatCitationKey = (key) => {
+  const formatCitationKey = (key: string): string => {
     return key
       // 在小写字母后跟大写字母的位置加空格 (camelCase)
       .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -19,7 +48,7 @@ const CitationContent = ({ editor, citationKey }) => {
       .replace(/(\d)([a-zA-Z])/g, '$1 $2');
   };
 
-  const handleDelete = (e) => {
+  const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -122,7 +151,7 @@ export const Citation = createReactInlineContentSpec(
     content: 'none',
   },
   {
-    render: (props) => (
+    render: (props: any) => (
       <CitationContent 
         editor={props.editor} 
         citationKey={props.inlineContent.props.citationKey} 
