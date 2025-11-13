@@ -18,8 +18,10 @@ class ContentService {
         return null;
       }
       
+      // 返回解析后的 JSON 对象
       return {
         ...content,
+        content_json: content.content_json ? JSON.parse(content.content_json) : null,
         content: content.content_json ? JSON.parse(content.content_json) : null
       };
     } catch (error) {

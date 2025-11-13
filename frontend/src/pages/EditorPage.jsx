@@ -241,10 +241,14 @@ function EditorPage() {
 
   useEffect(() => {
     if (selectedNode) {
+      // Clear content immediately to prevent showing stale content
+      setContent(null);
+      
       if (selectedNode.node_type === 'section' || selectedNode.node_type === 'reference') {
+        // Clear any existing cache for this node to ensure fresh content
+        const cacheKey = `content-${selectedNode.id}`;
+        ongoingRequestsRef.current.delete(cacheKey);
         loadContent(selectedNode.id);
-      } else {
-        setContent(null);
       }
     }
   }, [selectedNode]);
@@ -267,16 +271,16 @@ function EditorPage() {
   const extractTitleFromContent = (contentJson) => {
     try {
       const blocks = typeof contentJson === 'string' ? JSON.parse(contentJson) : contentJson;
-      if (!Array.isArray(blocks)) return null;
+      if (!Array.isArray(blocks) || blocks.length === 0) return null;
 
-      for (const block of blocks) {
-        if (block.type === 'heading' && block.content) {
-          const textContent = block.content
-            .map(item => item.type === 'text' ? item.text : '')
-            .join('')
-            .trim();
-          if (textContent) return textContent;
-        }
+      // 只有当第一个块是 heading 时才提取标题
+      const firstBlock = blocks[0];
+      if (firstBlock && firstBlock.type === 'heading' && firstBlock.content) {
+        const textContent = firstBlock.content
+          .map(item => item.type === 'text' ? item.text : '')
+          .join('')
+          .trim();
+        if (textContent) return textContent;
       }
       return null;
     } catch (e) {
@@ -298,7 +302,12 @@ function EditorPage() {
           
           if (selectedNode.node_type === 'section') {
             const extractedTitle = extractTitleFromContent(newContent);
-            if (extractedTitle && extractedTitle !== selectedNode.title) {
+            // 只有当当前标题是默认标题（如 "New Section"）或者非常短时，才自动更新
+            const shouldAutoUpdate = selectedNode.title === 'New Section' || 
+                                   selectedNode.title.startsWith('Section') ||
+                                   selectedNode.title.length <= 3;
+            
+            if (extractedTitle && extractedTitle !== selectedNode.title && shouldAutoUpdate) {
               await nodeAPI.update(selectedNode.id, { title: extractedTitle });
               await loadNodes(document.id);
               setSelectedNode(prev => ({ ...prev, title: extractedTitle }));

@@ -131,6 +131,7 @@
 - ✅ CORS 配置
 - ✅ 数据库表创建和外键关系
 - ✅ 自动时间戳
+- ✅ 内容API返回解析后的JSON对象
 
 ### 前端 ✅
 - ✅ Vite + React 18.3.1 项目
@@ -145,6 +146,7 @@
 - ✅ 自动保存机制 (2秒防抖)
 - ✅ 完整的前后端集成
 - ✅ **应用已成功渲染并运行**
+- ✅ **Section标题与内容对应问题修复**（Editor组件响应式内容更新）
 
 ## 已知问题
 
@@ -153,6 +155,13 @@
    - 降级 React 从 19.x 到 18.3.1（BlockNote 不兼容 React 19）
    - 使用 @blocknote/mantine 替代 @blocknote/react（更稳定的渲染）
    - 禁用 StrictMode（React 19 兼容性问题）
+
+2. ~~**Outline Section标题与BlockNote显示内容不对应**~~ - 已解决！通过以下措施：
+   - Editor组件添加useEffect监听content prop变化
+   - 内容变化时调用editor.replaceBlocks()更新编辑器
+   - 使用setTimeout延迟更新避免React 18 flushSync警告
+   - 后端API返回解析后的JSON对象而非字符串
+   - 优化节点切换时的缓存清理机制
 
 ### ⚠️ 次要问题
 1. Rust 后端编译时间过长（因 headless_chrome 依赖），已暂时使用 Express 替代
@@ -422,3 +431,9 @@ npm test
    - 左侧 280px 固定宽度侧边栏
    - 灵活的主编辑区域
    - 清晰的视觉层次
+
+4. **BlockNote编辑器响应式内容更新**
+   - 通过useEffect监听content prop变化实现编辑器自动更新
+   - 使用setTimeout避免React 18生命周期警告
+   - 智能内容比较避免不必要的重新渲染
+   - 解决Section切换时内容不对应的问题

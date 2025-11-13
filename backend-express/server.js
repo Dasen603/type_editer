@@ -1264,12 +1264,20 @@ app.get('/api/content/:node_id', validateInput.nodeIdParam, (req, res) => {
             res.json({
               id: null,
               node_id: parseInt(node_id),
-              content_json: defaultContent,
+              content_json: JSON.parse(defaultContent),
               updated_at: new Date().toISOString()
             });
           });
       }
-      res.json(row);
+      
+      // Parse content_json from string to object before sending
+      const response = {
+        ...row,
+        content_json: typeof row.content_json === 'string' 
+          ? JSON.parse(row.content_json) 
+          : row.content_json
+      };
+      res.json(response);
     })
     .catch(err => sendErrorResponse(res, 500, 'Failed to retrieve content', err));
 });

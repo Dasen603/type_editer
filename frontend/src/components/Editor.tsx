@@ -100,6 +100,24 @@ const Editor = forwardRef<EditorRef, EditorProps>(({
   // 使用state来触发重新渲染
   const [referencesVersion, setReferencesVersion] = useState(0);
 
+  // 监听content变化，当content改变时更新编辑器
+  useEffect(() => {
+    if (editor && content !== undefined && content !== null && !isUserTyping.current) {
+      const newContent = typeof content === 'string' ? JSON.parse(content) : content;
+      const currentContent = editor.document;
+      
+      // 比较内容是否真的不同（避免不必要的更新）
+      if (JSON.stringify(currentContent) !== JSON.stringify(newContent)) {
+        // 使用 setTimeout 将更新推迟到下一个事件循环，避免 React 警告
+        setTimeout(() => {
+          if (editor) {
+            editor.replaceBlocks(editor.document, newContent as PartialBlock[]);
+          }
+        }, 0);
+      }
+    }
+  }, [content, editor]);
+
   useEffect(() => {
     if (editor) {
       editor.onCitationDelete = (pos: number) => {
